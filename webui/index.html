@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assembly Workbench</title>
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>
+  :root{--bg:#15171c;--panel:#1e2126;--line:#2c313a;--txt:#dfe3ea;--dim:#8b93a1;--acc:#4f8cff}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+            font-family:system-ui,sans-serif;font-size:14px}
+  #wrap{display:flex;height:100vh}
+  #left{width:46%;min-width:420px;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+  #right{flex:1;position:relative}
+  model-viewer{width:100%;height:100%;background:#22262d}
+  #setup{padding:12px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+  #setup input,#setup select{width:100%;padding:7px 9px;background:var(--panel);color:var(--txt);
+       border:1px solid var(--line);border-radius:6px}
+  #setup .row{display:flex;gap:6px}
+  button{padding:7px 14px;background:var(--acc);border:0;border-radius:6px;color:#fff;cursor:pointer}
+  button.sec{background:#39404b}
+  #log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .m{max-width:92%;padding:8px 11px;border-radius:9px;white-space:pre-wrap;word-break:break-word;line-height:1.45}
+  .assistant{background:var(--panel);align-self:flex-start;border:1px solid var(--line)}
+  .user{background:#2a4365;align-self:flex-end}
+  .tool{color:var(--dim);font-size:12px;align-self:flex-start;font-family:ui-monospace,monospace;
+        max-width:100%;padding:0 4px}
+  .status{color:#e8b34c;font-size:12.5px;align-self:center;text-align:center}
+  .m img{max-width:100%;border-radius:6px;margin-top:6px;display:block}
+  #inputbar{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)}
+  #inputbar input{flex:1;padding:9px 11px;background:var(--panel);color:var(--txt);
+       border:1px solid var(--line);border-radius:6px}
+  #statebar{padding:5px 12px;font-size:12px;color:var(--dim);border-top:1px solid var(--line)}
+  #vbar{position:absolute;top:0;left:0;right:0;padding:6px 12px;font-size:12px;
+        background:rgba(0,0,0,.4);z-index:5;color:#cfd5df}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="left">
+    <div id="setup">
+      <div class="row">
+        <button class="sec" onclick="document.getElementById('fparts').click()">📁 Parts folder</button>
+        <button class="sec" onclick="document.getElementById('ffiles').click()">🧩 Part files (multi)</button>
+        <span id="parts_st" style="align-self:center;color:var(--dim);font-size:12px">none selected</span>
+        <input id="fparts" type="file" webkitdirectory multiple class="hide" onchange="pickParts(this)">
+        <input id="ffiles" type="file" multiple accept=".glb,.gltf,.stl,.obj" class="hide" onchange="pickParts(this)">
+      </div>
+      <div id="plist" style="display:none;max-height:130px;overflow-y:auto;background:var(--panel);
+           border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12.5px;line-height:1.9"></div>
+      <div class="row">
+        <button class="sec" onclick="document.getElementById('fmanual').click()">📄 Manual</button>
+        <span id="manual_st" style="align-self:center;color:var(--dim);font-size:12px">none selected</span>
+        <input id="fmanual" type="file" accept=".pdf,image/*" class="hide" onchange="pickManual(this)">
+      </div>
+      <input id="parts" placeholder="…or type a server-side parts directory path">
+      <input id="manual" placeholder="…or type a server-side manual path (PDF/image)">
+      <div class="row">
+        <select id="toolkit">
+          <option value="">Toolkit: pro (default)</option>
+          <option value="fable">Toolkit: fable</option>
+        </select>
+        <input id="model" placeholder="Model (default gpt-5.5)" style="flex:1">
+      </div>
+      <input id="key" type="password" placeholder="OPENAI_API_KEY (leave empty if exported on the server)">
+      <div class="row">
+        <button onclick="start()">Start assembly</button>
+        <button class="sec" onclick="say('__CONTINUE__')">Continue ▸</button>
+        <button class="sec" onclick="say('__ACCEPT__')">Accept & finish ✓</button>
+      </div>
+    </div>
+    <div id="log"></div>
+    <div id="inputbar">
+      <input id="txt" placeholder='Type feedback anytime, e.g. "the arms are backwards - wide motor end goes outward"'
+             onkeydown="if(event.key==='Enter')send()">
+      <button onclick="send()">Send</button>
+    </div>
+    <div id="statebar">Status: <span id="st">idle</span> <span id="dt"></span></div>
+  </div>
+  <div id="right">
+    <div id="vbar"><span id="mv_st">waiting for the first assembly…</span> · drag to rotate / scroll to zoom / right-drag to pan · auto-reloads</div>
+    <model-viewer id="mv" camera-controls exposure="0.9" shadow-intensity="0.7"
+                  interaction-prompt="none"></model-viewer>
+  </div>
+</div>
+<script>
+let since = 0, lastM = 0;
+const log = document.getElementById('log');
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+let pickedParts = null, pickedManual = null;
+
+function pickParts(inp){
+  pickedParts = [...inp.files].filter(f => /\.(glb|gltf|stl|obj)$/i.test(f.name));
+  const pl = document.getElementById('plist');
+  if (!pickedParts.length){
+    pl.style.display = 'none';
+    document.getElementById('parts_st').textContent = 'no 3D part files found';
+    return;
+  }
+  pl.style.display = 'block';
+  pl.innerHTML = pickedParts.map((f, i) =>
+    `<label style="display:block;cursor:pointer"><input type="checkbox" checked data-pi="${i}" onchange="updateCnt()"> ${f.name} <span style="color:var(--dim)">(${(f.size/1024).toFixed(0)}KB)</span></label>`).join('');
+  updateCnt();
+}
+function chosen(){
+  return [...document.querySelectorAll('#plist input:checked')].map(cb => pickedParts[+cb.dataset.pi]);
+}
+function updateCnt(){
+  document.getElementById('parts_st').textContent = `${chosen().length}/${pickedParts.length} parts selected`;
+}
+function pickManual(inp){
+  pickedManual = inp.files[0] || null;
+  document.getElementById('manual_st').textContent = pickedManual ? pickedManual.name : 'none selected';
+}
+async function b64(f){
+  const buf = new Uint8Array(await f.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < buf.length; i += 0x8000)
+    s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function start(){
+  let parts_dir = document.getElementById('parts').value.trim();
+  let manual = document.getElementById('manual').value.trim();
+  const sel = pickedParts ? chosen() : [];
+  if (sel.length){
+    document.getElementById('parts_st').textContent = 'uploading…';
+    const files = [];
+    for (const f of sel) files.push({name: f.name, b64: await b64(f)});
+    const up = {files};
+    if (pickedManual) up.manual = {name: pickedManual.name, b64: await b64(pickedManual)};
+    const j = await (await fetch('/upload', {method:'POST', body: JSON.stringify(up)})).json();
+    if (j.error){ alert(j.error); return; }
+    parts_dir = j.parts_dir;
+    if (j.manual) manual = j.manual;
+    document.getElementById('parts_st').textContent = `${j.count} parts uploaded`;
+  }
+  const body = {
+    parts_dir, manual,
+    model: document.getElementById('model').value.trim(),
+    api_key: document.getElementById('key').value.trim(),
+  };
+  body.toolkit_name = document.getElementById('toolkit').value || 'pro';
+  const r = await fetch('/start', {method:'POST', body: JSON.stringify(body)});
+  const j = await r.json();
+  if (j.error) alert(j.error);
+}
+
+async function say(t){ await fetch('/say', {method:'POST', body: JSON.stringify({text:t})}); }
+function send(){
+  const el = document.getElementById('txt');
+  if (el.value.trim()){ say(el.value.trim()); el.value=''; }
+}
+
+async function poll(){
+  try{
+    const j = await (await fetch('/events?since='+since)).json();
+    for (const e of j.entries){
+      since = e.i + 1;
+      const d = document.createElement('div');
+      d.className = 'm ' + e.role;
+      d.innerHTML = esc(e.text||'');
+      if (e.image){ const im=document.createElement('img'); im.src=e.image+'&t='+Date.now(); d.appendChild(im); }
+      log.appendChild(d);
+      log.scrollTop = log.scrollHeight;
+    }
+    document.getElementById('st').textContent = j.status;
+    document.getElementById('dt').textContent = j.detail||'';
+  }catch(err){}
+  try{
+    const {mtime} = await (await fetch('/mtime')).json();
+    if (mtime && mtime !== lastM){
+      lastM = mtime;
+      document.getElementById('mv').src = '/model.glb?t=' + mtime;
+      document.getElementById('mv_st').textContent = 'model updated at ' + new Date(mtime*1000).toLocaleTimeString();
+    }
+  }catch(err){}
+}
+setInterval(poll, 1200); poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+__pycache__/
+workspaces/
+*.pyc
+*.blend1
+.webui_scratch/
+nohup.out

@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Live Assembly Preview</title>
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#1e2126;color:#ddd;font-family:system-ui}
+  model-viewer{width:100vw;height:100vh;background:#1e2126}
+  #bar{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:13px;
+       background:rgba(0,0,0,.45);display:flex;gap:16px;align-items:center;z-index:9}
+  .dot{width:9px;height:9px;border-radius:50%;background:#888;display:inline-block}
+  .live{background:#3ad06a}
+</style>
+</head>
+<body>
+<div id="bar">
+  <span><span id="dot" class="dot"></span> <span id="st">waiting for model…</span></span>
+  <span id="ts"></span>
+  <span style="opacity:.6">drag=rotate · scroll=zoom · right-drag=pan · auto-reloads on change</span>
+</div>
+<model-viewer id="mv" src="/model.glb" camera-controls exposure="0.9"
+  shadow-intensity="0.7" interaction-prompt="none"></model-viewer>
+<script>
+const mv = document.getElementById('mv');
+let last = 0;
+async function poll(){
+  try{
+    const {mtime} = await (await fetch('/mtime')).json();
+    if(mtime && mtime !== last){
+      last = mtime;
+      mv.src = '/model.glb?t=' + mtime;
+      document.getElementById('ts').textContent = 'updated at ' + new Date(mtime*1000).toLocaleTimeString();
+    }
+    document.getElementById('dot').className = 'dot live';
+    document.getElementById('st').textContent = mtime ? 'connected' : 'waiting for model file…';
+  }catch(e){
+    document.getElementById('dot').className = 'dot';
+    document.getElementById('st').textContent = 'server disconnected';
+  }
+}
+setInterval(poll, 2000); poll();
+</script>
+</body>
+</html>
