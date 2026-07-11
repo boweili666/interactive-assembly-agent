@@ -15,6 +15,18 @@ Two ways to run it:
   viewer shows every assembly update in real time; the agent pauses at checkpoints so you
   can inspect the model and steer it ("the arms are backwards — wide motor end goes outward").
 
+![assembled FPV frame](docs/demo_assembly.jpg)
+*A 5-inch FPV frame kit (9 parts + a one-page manual) assembled by the agent, steered by
+chat feedback in the web workbench.*
+
+![manual vs render comparison](docs/demo_compare.jpg)
+*The `compare_manual.png` gate image produced after every assembly: manual figure | hero
+render | top render, side by side for verification.*
+
+No Blender add-on or MCP server is needed — every toolkit call launches a fresh
+**headless** Blender (`blender -b --factory-startup -P tool.py`), so a plain Blender
+install is the only 3D dependency and everything works on servers/CI.
+
 ## How it works
 
 ```
@@ -57,7 +69,7 @@ JSON schema.
 ## Setup
 
 ```bash
-git clone git@github.com:boweili666/part-assembler.git
+git clone https://github.com/boweili666/part-assembler.git
 cd part-assembler
 pip install openai pillow
 export OPENAI_API_KEY=sk-...
