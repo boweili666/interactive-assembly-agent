@@ -69,7 +69,7 @@ JSON schema.
 ## Setup
 
 ```bash
-git clone https://github.com/boweili666/part-assembler.git
+git clone https://github.com/boweili666/interactive-assembly-agent.git
 cd part-assembler
 pip install openai pillow
 export OPENAI_API_KEY=sk-...
