@@ -1,4 +1,4 @@
-# part-assembler
+# interactive-assembly-agent
 
 An LLM agent that assembles 3D part kits (`.glb`) into a complete model by **reading the
 assembly manual itself** — powered by the OpenAI API and headless Blender.
@@ -70,7 +70,7 @@ JSON schema.
 
 ```bash
 git clone https://github.com/boweili666/interactive-assembly-agent.git
-cd part-assembler
+cd interactive-assembly-agent
 pip install openai pillow
 export OPENAI_API_KEY=sk-...
 # optional, for proxies / compatible endpoints:
